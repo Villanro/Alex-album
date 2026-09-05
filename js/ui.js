@@ -322,20 +322,18 @@ function bindTabs() {
 
 // ---------- ajustes ----------
 function settingsHtml() {
-  const session = sync.getSession();
   const status = sync.getStatus();
-  const authBlock = session
-    ? `<div class="settings-row"><span>Cuenta</span><b>${session.user.email}</b></div>
-       <button class="mbtn" data-act="signout">Cerrar sesión</button>`
-    : sync.isConfigured()
-      ? `<p>Inicia sesión con enlace mágico para sincronizar entre tus dispositivos.</p>
-         <input type="email" id="authEmail" placeholder="tu@correo.com" autocomplete="email" inputmode="email">
-         <button class="mbtn dark" data-act="signin">Enviar enlace</button>`
-      : `<p>La sincronización no está configurada todavía (falta config.js). La app funciona en modo local.</p>`;
+  const code = sync.getSyncCode();
+  const syncBlock = sync.isConfigured()
+    ? `<div class="settings-row"><span>Tu código</span><b>${code || '—'}</b></div>
+       <button class="mbtn" data-act="copycode">Copiar código</button>
+       <p>Pégalo en Ajustes de tu otro dispositivo para compartir este álbum entre los dos.</p>
+       <button class="mbtn" data-act="linkcode">Vincular con otro código…</button>`
+    : `<p>La sincronización no está configurada todavía (falta config.js). La app funciona en modo local.</p>`;
   return `
   <h3>Ajustes</h3>
   <div class="settings-row"><span>Sincronización</span><span class="settings-status"><span class="sync-dot" data-status="${status}" aria-hidden="true"></span>${STATUS_LABEL[status] || status}</span></div>
-  ${authBlock}
+  ${syncBlock}
   <button class="mbtn" data-act="exp">Copiar copia de seguridad</button>
   <button class="mbtn" data-act="expfile">Descargar copia (.json)</button>
   <button class="mbtn" data-act="imp">Pegar copia de seguridad</button>
@@ -386,14 +384,14 @@ function bindModal() {
     if (a === 'reset') showModal(`<h3>¿Empezar de cero?</h3><p>Se borrarán todas tus figuritas marcadas. No se puede deshacer.</p>
       <button class="mbtn danger" data-act="resetok">Sí, borrar todo</button><button class="mbtn" data-close="1">Cancelar</button>`);
     if (a === 'resetok') { store.resetAll(); hideModal(); closeSheet(); toast('Álbum vacío'); }
-    if (a === 'signin') {
-      const email = ($('authEmail').value || '').trim();
-      if (!email) return;
-      e.target.disabled = true; e.target.textContent = 'Enviando…';
-      try { await sync.signInWithEmail(email); showModal(`<h3>Revisa tu correo</h3><p>Te hemos enviado un enlace mágico a ${email}. Ábrelo en este dispositivo para vincularlo.</p><button class="mbtn" data-close="1">Cerrar</button>`); }
-      catch (err) { toast('No se pudo enviar el enlace'); hideModal(); }
+    if (a === 'copycode') { copyText(sync.getSyncCode() || ''); }
+    if (a === 'linkcode') showModal(`<h3>Vincular con otro código</h3><p>Pega aquí el código que copiaste desde tu otro dispositivo. Los álbumes de ambos se fusionarán (no se borra nada).</p>
+      <textarea id="linkIn" placeholder="AB3F-9KLM-22XZ" aria-label="Código de sincronización"></textarea>
+      <button class="mbtn dark" data-act="linkgo">Vincular</button><button class="mbtn" data-close="1">Cancelar</button>`);
+    if (a === 'linkgo') {
+      try { sync.setSyncCode($('linkIn').value); hideModal(); toast('Vinculado, sincronizando…'); }
+      catch (err) { toast('Ese código no es válido'); }
     }
-    if (a === 'signout') { await sync.signOut(); hideModal(); toast('Sesión cerrada'); }
   };
 }
 

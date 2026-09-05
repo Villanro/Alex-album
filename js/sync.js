@@ -1,7 +1,13 @@
-// Autenticación + réplica con Supabase. Este módulo OBSERVA store.js y lo llama
+// Réplica con Supabase. Este módulo OBSERVA store.js y lo llama
 // (getAllRows, applyRemoteRows, subscribe); store.js nunca importa nada de aquí.
-// Si no hay sesión, no hay red o Supabase está caído, la app sigue funcionando
-// igual de bien en local: aquí sólo se deja de replicar.
+// Si no hay red o Supabase está caído, la app sigue funcionando igual de bien
+// en local: aquí sólo se deja de replicar.
+//
+// Sin login: cada dispositivo tiene un "código de sincronización" propio,
+// generado al azar la primera vez y guardado en localStorage. Se manda en la
+// cabecera x-sync-code de cada petición; la política RLS de la tabla sólo dev
+// vuelve/acepta filas cuyo sync_code coincide con esa cabecera. Para compartir
+// el álbum entre dispositivos, se copia el código de uno y se pega en el otro.
 import * as store from './store.js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config.js';
 
@@ -10,10 +16,12 @@ const SUPABASE_JS_VENDOR = '../vendor/supabase-js.esm.js';
 const TABLE = 'stickers';
 const UPLOAD_BATCH_SIZE = 200;
 const SYNC_DEBOUNCE_MS = 1500;
+const SYNC_CODE_KEY = 'panini2026:sync_code';
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sin 0/O ni 1/I, para que sea fácil de teclear
 
 let supabase = null;
-let session = null;
-let status = 'local'; // 'local' | 'offline' | 'syncing' | 'synced'
+let syncCode = null;
+let status = 'local'; // 'local' (no configurado) | 'offline' | 'syncing' | 'synced'
 const statusListeners = new Set();
 let syncTimer = null;
 let syncInFlight = null;
@@ -26,9 +34,47 @@ function setStatus(next) {
 
 export function getStatus() { return status; }
 export function subscribeStatus(fn) { statusListeners.add(fn); return () => statusListeners.delete(fn); }
-export function getSession() { return session; }
 export function isConfigured() {
   return !!(SUPABASE_URL && SUPABASE_ANON_KEY && !SUPABASE_URL.includes('TU-PROYECTO'));
+}
+
+function generateCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  let s = '';
+  for (let i = 0; i < 12; i++) s += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
+  return s.match(/.{1,4}/g).join('-');
+}
+function normalizeCode(raw) {
+  return (raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '').match(/.{1,4}/g)?.join('-') || '';
+}
+
+export function getSyncCode() { return syncCode; }
+
+function buildClient(createClient) {
+  supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { 'x-sync-code': syncCode } },
+    auth: { persistSession: false }
+  });
+}
+
+export function setSyncCode(rawCode) {
+  const code = normalizeCode(rawCode);
+  if (!code) throw new Error('Código no válido');
+  syncCode = code;
+  localStorage.setItem(SYNC_CODE_KEY, syncCode);
+  reloadClientAndSync();
+}
+
+async function reloadClientAndSync() {
+  if (!isConfigured()) return;
+  try {
+    const { createClient } = await loadSupabaseClientLib();
+    buildClient(createClient);
+    fullSync();
+  } catch (e) {
+    console.warn('No se pudo recargar el cliente de Supabase', e);
+    setStatus('offline');
+  }
 }
 
 async function loadSupabaseClientLib() {
@@ -43,7 +89,7 @@ function toIso(ms) { return ms ? new Date(ms).toISOString() : null; }
 
 function localRowToApi(r) {
   return {
-    user_id: session.user.id,
+    sync_code: syncCode,
     team: r.team,
     num: r.num,
     count: r.count,
@@ -64,7 +110,7 @@ function apiRowToLocal(r) {
 async function uploadBatches(rows) {
   for (let i = 0; i < rows.length; i += UPLOAD_BATCH_SIZE) {
     const chunk = rows.slice(i, i + UPLOAD_BATCH_SIZE).map(localRowToApi);
-    const { error } = await supabase.from(TABLE).upsert(chunk, { onConflict: 'user_id,team,num' });
+    const { error } = await supabase.from(TABLE).upsert(chunk, { onConflict: 'sync_code,team,num' });
     if (error) throw error;
   }
 }
@@ -92,15 +138,14 @@ export function diffRows(localRows, remoteRows) {
 }
 
 export async function fullSync() {
-  if (!supabase || !session || !navigator.onLine) return;
+  if (!supabase || !navigator.onLine) return;
   if (syncInFlight) return syncInFlight;
   syncInFlight = (async () => {
     setStatus('syncing');
     try {
       const { data: remoteRows, error } = await supabase
         .from(TABLE)
-        .select('team,num,count,first_at,updated_at')
-        .eq('user_id', session.user.id);
+        .select('team,num,count,first_at,updated_at');
       if (error) throw error;
 
       const local = store.getAllRows();
@@ -122,23 +167,9 @@ export async function fullSync() {
 }
 
 function scheduleSync() {
-  if (!session) return;
+  if (!supabase) return;
   clearTimeout(syncTimer);
   syncTimer = setTimeout(fullSync, SYNC_DEBOUNCE_MS);
-}
-
-export async function signInWithEmail(email) {
-  if (!supabase) throw new Error('Supabase no está disponible ahora mismo.');
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: window.location.origin + window.location.pathname }
-  });
-  if (error) throw error;
-}
-
-export async function signOut() {
-  if (!supabase) return;
-  await supabase.auth.signOut();
 }
 
 export async function init() {
@@ -146,34 +177,22 @@ export async function init() {
     setStatus('local');
     return;
   }
+  syncCode = localStorage.getItem(SYNC_CODE_KEY) || generateCode();
+  localStorage.setItem(SYNC_CODE_KEY, syncCode);
+
   try {
     const { createClient } = await loadSupabaseClientLib();
-    supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    buildClient(createClient);
   } catch (e) {
     console.warn('No se pudo cargar el cliente de Supabase; la app sigue en modo local.', e);
     setStatus('local');
     return;
   }
 
-  try {
-    const { data: { session: initial } } = await supabase.auth.getSession();
-    session = initial;
-    setStatus(session ? 'offline' : 'local');
-  } catch (e) {
-    console.warn('No se pudo recuperar la sesión (sin red); se reintentará más tarde.', e);
-    setStatus('offline');
-  }
-
-  supabase.auth.onAuthStateChange((event, newSession) => {
-    session = newSession;
-    if (event === 'SIGNED_OUT' || !session) { setStatus('local'); return; }
-    setStatus('offline');
-    fullSync();
-  });
-
+  setStatus('offline');
   store.subscribe(scheduleSync);
   window.addEventListener('online', () => fullSync());
   document.addEventListener('visibilitychange', () => { if (!document.hidden) fullSync(); });
 
-  if (session) fullSync();
+  fullSync();
 }

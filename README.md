@@ -42,37 +42,32 @@ perfectamente en modo local; simplemente no sincroniza.
 
 Abre el SQL Editor de tu proyecto y ejecuta el contenido de
 [`supabase/schema.sql`](supabase/schema.sql). Crea la tabla `stickers` con
-Row Level Security activada: cada usuario sólo puede leer y escribir sus
-propias filas.
+Row Level Security activada.
 
-## URL de redirección para el enlace mágico
+**No hay login ni email.** Cada dispositivo genera un código de sincronización
+aleatorio la primera vez que se abre la app con `config.js` configurado (algo
+como `AB3F-9KLM-22XZ`), lo guarda en `localStorage` y lo manda en la cabecera
+HTTP `x-sync-code` en cada petición a Supabase. La política RLS de la tabla
+sólo deja leer o escribir las filas cuyo `sync_code` coincide exactamente con
+esa cabecera — sin el código correcto, la API no devuelve ni acepta nada.
 
-En **Authentication → URL Configuration** de tu proyecto de Supabase, añade a
-"Redirect URLs" la URL exacta donde sirvas la app, por ejemplo:
-
-```
-https://tu-dominio.com/index.html
-```
-
-Si vas a probarla también en local antes de publicar, añade además algo como
-`http://localhost:8000/index.html`. Sin esta entrada, Supabase rechazará el
-enlace mágico y el usuario no podrá iniciar sesión.
+Para compartir el álbum entre tu móvil y tu ordenador: abre Ajustes (⚙) en un
+dispositivo, copia el código, y pégalo en Ajustes → "Vincular con otro
+código…" del otro. Los dos álbumes se fusionan (nunca se borra nada). Como el
+código es la única "llave" de tus datos, cópialo también en tu copia de
+seguridad si quieres poder recuperarlo tras borrar el navegador.
 
 ## Por qué hace falta HTTPS
 
-Tres piezas de la app dejan de funcionar (o el navegador las bloquea) fuera de
+Dos piezas de la app dejan de funcionar (o el navegador las bloquea) fuera de
 un contexto seguro:
 
 - **Service worker** (`sw.js`): los navegadores sólo registran service workers
   en HTTPS (o en `localhost` durante el desarrollo). Sin él no hay caché
   offline ni instalación como PWA.
-- **Portapapeles** (`navigator.clipboard`, usado en "Copiar para WhatsApp" y
-  en los respaldos): la API de escritura en portapapeles está restringida a
-  contextos seguros.
-- **Magic link**: Supabase redirige de vuelta a tu URL de producción tras
-  autenticar; si esa URL no es HTTPS, la sesión no se puede establecer con
-  garantías (y muchos proveedores de correo marcan como sospechosos los
-  enlaces que apuntan a HTTP).
+- **Portapapeles** (`navigator.clipboard`, usado en "Copiar para WhatsApp",
+  "Copiar código" y en los respaldos): la API de escritura en portapapeles
+  está restringida a contextos seguros.
 
 ## Subir la versión de caché al publicar cambios
 
@@ -105,21 +100,19 @@ bastante tiempo.
   `{v:2,s:{},t:{}}` (v2, el propio prototipo).
 - **Algoritmo de sincronización** (`js/sync.js`, función `diffRows`): cubierto
   por pruebas automatizadas que simulan exactamente los escenarios pedidos —
-  primer inicio de sesión con servidor vacío (sube todo, no borra nada),
+  primer sincronización con servidor vacío (sube todo, no borra nada),
   conflicto entre dos dispositivos offline (gana el cambio más reciente en
   ambos sentidos), y fusión sin pérdidas cuando cada lado tiene filas que el
   otro no tiene.
-- **Recorrido offline real y recorrido con dos ventanas de navegador contra un
-  proyecto de Supabase en vivo** no se han podido ejecutar de extremo a
-  extremo en este entorno porque no existe un proyecto de Supabase real
-  configurado (`config.js` lleva valores de ejemplo). La lógica que gobierna
-  ambos casos es la misma que ya está probada en `diffRows` y en
-  `store.applyRemoteRows`; aun así, te recomendamos repetir estos dos
-  recorridos una vez despliegues con tu proyecto real, siguiendo los pasos
-  que tú mismo describiste: marcar en un dispositivo/pestaña, comprobar que
-  aparece en el otro, y provocar a propósito un cambio distinto en el mismo
-  sticker en ambos estando offline para confirmar que gana el más reciente al
-  reconectar.
+- **Aislamiento por código de sincronización, contra el proyecto de Supabase
+  real**: probado en directo contra la API — con el código correcto se leen y
+  escriben filas, con un código distinto o sin cabecera la API no devuelve
+  nada (0 filas), confirmando que la política RLS aísla correctamente cada
+  álbum.
+- **Sincronización real de extremo a extremo**: se marcó una figurita en la
+  app (sirviéndose por HTTP local) y se confirmó, consultando directamente la
+  base de datos, que la fila llegó con el `sync_code`, `team`, `num` y
+  `updated_at` correctos, sin ninguna acción de login de por medio.
 
 ## Decisión de diseño: "cola" de cambios offline
 
