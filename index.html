@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mi Álbum Mundial 2026</title>
+<meta name="description" content="Controla tu álbum Panini del Mundial 2026: marca figuritas, lleva tus repes y compara listas en las quedadas de intercambio.">
+<meta name="theme-color" content="#0F1E38">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Álbum 2026">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="top-row">
+      <div class="brand">MI ÁLBUM <span>MUNDIAL 2026</span></div>
+      <div class="top-actions">
+        <span class="sync-dot" id="syncDot" data-status="local" role="status" aria-label="Modo local"></span>
+        <button class="gear" id="gear" aria-label="Ajustes">⚙</button>
+      </div>
+    </div>
+    <div class="tally"><b id="tHave">0</b><small id="tTotal">de 978 pegadas</small></div>
+    <div class="bar" role="progressbar" aria-label="Progreso del álbum" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="tBar" style="width:0%"></i></div>
+    <div class="legend">
+      <span>Faltan <b id="tNeed">978</b></span>
+      <span>Repes <b id="tDup">0</b></span>
+      <span>Completo <b id="tPct">0%</b></span>
+    </div>
+  </div>
+  <div class="warn" id="warn">No se está guardando en este dispositivo. Copia tu respaldo desde ⚙ antes de cerrar.</div>
+</header>
+
+<main class="wrap" id="main" aria-live="polite"></main>
+
+<nav class="tabs" role="tablist" aria-label="Secciones">
+  <button data-tab="album" class="on" role="tab" aria-selected="true"><span aria-hidden="true">📔</span>Álbum</button>
+  <button data-tab="dups" role="tab" aria-selected="false"><span aria-hidden="true">🔁</span>Mis repes</button>
+  <button data-tab="needs" role="tab" aria-selected="false"><span aria-hidden="true">🎯</span>Me faltan</button>
+</nav>
+
+<div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+<div class="modal" id="modal"><div class="modal-in" id="modalIn"></div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"><b id="toastMsg"></b><button id="toastAct" hidden>Deshacer</button></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
