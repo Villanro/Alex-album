@@ -1,6 +1,6 @@
 // Sube este número cada vez que publiques cambios: fuerza a los dispositivos a
 // descargar los ficheros nuevos en lugar de servir la copia en caché antigua.
-const CACHE_VERSION = 'panini2026-v1';
+const CACHE_VERSION = 'panini2026-v2';
 
 const PRECACHE = [
   './',
