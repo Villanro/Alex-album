@@ -1,0 +1,2 @@
+export const SUPABASE_URL = 'https://npextonsuydwdpcytmbp.supabase.co';
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wZXh0b25zdXlkd2RwY3l0bWJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MzcyOTUsImV4cCI6MjEwNDIxMzI5NX0.eKa5zt_oCDa1loFYJ4Y9tFMRV_zzPp5IVajrXgShaGU';
